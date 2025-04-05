@@ -17,9 +17,23 @@ class Currency:
         )
         ''')
 
+        # Создаем таблицу ExchangeRates
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS ExchangeRates (
+        id INTEGER PRIMARY KEY,
+        baseCurrencyCode TEXT NOT NULL,
+        targetCurrencyCode TEXT NOT NULL,
+        rate REAL NOT NULL,
+        FOREIGN KEY (baseCurrencyCode) REFERENCES Currencies(code),
+        FOREIGN KEY (targetCurrencyCode) REFERENCES Currencies(code),
+        UNIQUE(baseCurrencyCode, targetCurrencyCode)
+        )
+        ''')
+
         # Сохраняем изменения и закрываем соединение
         connection.commit()
         connection.close()
+
     def add_currency(self, name, code, sign):
         connection = sqlite3.connect('my_database.db')
         cursor = connection.cursor()
@@ -72,5 +86,56 @@ class Currency:
             'code': code,
             'sign': sign
         }, ensure_ascii=False, indent=4)
+
+    def add_exchange_rate(self, base_currency_code, target_currency_code, rate):
+        connection = sqlite3.connect('my_database.db')
+        cursor = connection.cursor()
+        
+        # Проверяем существование валют
+        cursor.execute('SELECT code FROM Currencies WHERE code = ?', (base_currency_code.upper(),))
+        if not cursor.fetchone():
+            connection.close()
+            raise ValueError(f'Базовая валюта с кодом {base_currency_code} не найдена')
+            
+        cursor.execute('SELECT code FROM Currencies WHERE code = ?', (target_currency_code.upper(),))
+        if not cursor.fetchone():
+            connection.close()
+            raise ValueError(f'Целевая валюта с кодом {target_currency_code} не найдена')
+        
+        # Проверяем, существует ли курс
+        cursor.execute('SELECT * FROM ExchangeRates WHERE baseCurrencyCode = ? AND targetCurrencyCode = ?',
+                      (base_currency_code.upper(), target_currency_code.upper()))
+        if cursor.fetchone():
+            connection.close()
+            raise ValueError(f'Курс обмена {base_currency_code}/{target_currency_code} уже существует')
+        
+        # Добавляем новый курс
+        cursor.execute('''
+            INSERT INTO ExchangeRates (baseCurrencyCode, targetCurrencyCode, rate)
+            VALUES (?, ?, ?)
+        ''', (base_currency_code.upper(), target_currency_code.upper(), rate))
+        
+        connection.commit()
+        connection.close()
+
+    def get_exchange_rates(self):
+        connection = sqlite3.connect('my_database.db')
+        cursor = connection.cursor()
+        cursor.execute('''
+            SELECT baseCurrencyCode, targetCurrencyCode, rate 
+            FROM ExchangeRates
+        ''')
+        rates = cursor.fetchall()
+        connection.close()
+        
+        result = []
+        for base_code, target_code, rate in rates:
+            result.append({
+                'baseCurrencyCode': base_code,
+                'targetCurrencyCode': target_code,
+                'rate': rate
+            })
+        
+        return json.dumps(result, ensure_ascii=False, indent=4)
 
         

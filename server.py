@@ -34,20 +34,52 @@ class OurHandler(BaseHTTPRequestHandler):
         self.send_json_response(currencies)
 
     def do_POST(self):
-        content_length = int(self.headers['Content-Length'])
-        post_data = self.rfile.read(content_length)
-        data = json.loads(post_data.decode('utf-8'))
-        
-        try:
-            self.currency.add_currency(data['name'], data['code'], data['sign'])
-            response_message = json.dumps({'message': 'Валюта успешно добавлена'}, ensure_ascii=False)
-            self.send_json_response(response_message)
-        except ValueError as e:
-            error = json.dumps({'error': str(e)}, ensure_ascii=False)
-            self.send_json_response(error, HTTPStatus.BAD_REQUEST)
-        except Exception as e:
-            error = json.dumps({'error': str(e)}, ensure_ascii=False)
-            self.send_json_response(error, HTTPStatus.INTERNAL_SERVER_ERROR)
+        if self.path == '/currencies':
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            
+            try:
+                # Парсим данные формы
+                data = {}
+                for pair in post_data.decode('utf-8').split('&'):
+                    key, value = pair.split('=')
+                    data[key] = value
+                
+                self.currency.add_currency(data['name'], data['code'], data['sign'])
+                response_message = json.dumps({'message': 'Валюта успешно добавлена'}, ensure_ascii=False)
+                self.send_json_response(response_message)
+            except ValueError as e:
+                error = json.dumps({'error': str(e)}, ensure_ascii=False)
+                self.send_json_response(error, HTTPStatus.BAD_REQUEST)
+            except Exception as e:
+                error = json.dumps({'error': str(e)}, ensure_ascii=False)
+                self.send_json_response(error, HTTPStatus.INTERNAL_SERVER_ERROR)
+        elif self.path == '/exchangeRates':
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            
+            try:
+                # Парсим данные формы
+                data = {}
+                for pair in post_data.decode('utf-8').split('&'):
+                    key, value = pair.split('=')
+                    data[key] = value
+                
+                self.currency.add_exchange_rate(
+                    data['baseCurrencyCode'],
+                    data['targetCurrencyCode'],
+                    float(data['rate'])
+                )
+                response_message = json.dumps({'message': 'Курс обмена успешно добавлен'}, ensure_ascii=False)
+                self.send_json_response(response_message)
+            except ValueError as e:
+                error = json.dumps({'error': str(e)}, ensure_ascii=False)
+                self.send_json_response(error, HTTPStatus.BAD_REQUEST)
+            except Exception as e:
+                error = json.dumps({'error': str(e)}, ensure_ascii=False)
+                self.send_json_response(error, HTTPStatus.INTERNAL_SERVER_ERROR)
+        else:
+            self.send_error(HTTPStatus.NOT_FOUND, 'Page not found')
 
     def do_GET(self):
         if self.path == '/':
