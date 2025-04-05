@@ -73,6 +73,4 @@ class Currency:
             'sign': sign
         }, ensure_ascii=False, indent=4)
 
-# Экспортируем класс Currency
-__all__ = ['Currency']
         
