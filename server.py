@@ -14,13 +14,6 @@ class OurHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data.encode('utf-8'))
 
-    def simple_page(self):
-        self.send_response(HTTPStatus.OK)
-        self.send_header('Content-type', 'text/html; charset=UTF-8')
-        self.end_headers()
-
-        self.wfile.write('Hello World'.encode('utf-8'))
-
     def file_page(self, filename: str = 'index.html'):
         self.send_response(HTTPStatus.OK)
         self.send_header('Content-type', 'text/html; charset=UTF-8')
@@ -45,15 +38,28 @@ class OurHandler(BaseHTTPRequestHandler):
                     key, value = pair.split('=')
                     data[key] = value
                 
+                # Проверяем наличие всех необходимых полей
+                required_fields = ['name', 'code', 'sign']
+                for field in required_fields:
+                    if field not in data:
+                        error = json.dumps({'error': f'Отсутствует поле {field}'}, ensure_ascii=False)
+                        self.send_json_response(error, HTTPStatus.BAD_REQUEST)
+                        return
+                    if not data[field].strip():
+                        error = json.dumps({'error': f'Поле {field} не может быть пустым'}, ensure_ascii=False)
+                        self.send_json_response(error, HTTPStatus.BAD_REQUEST)
+                        return
+                
                 self.currency.add_currency(data['name'], data['code'], data['sign'])
                 response_message = json.dumps({'message': 'Валюта успешно добавлена'}, ensure_ascii=False)
-                self.send_json_response(response_message)
+                self.send_json_response(response_message, HTTPStatus.CREATED)
             except ValueError as e:
                 error = json.dumps({'error': str(e)}, ensure_ascii=False)
                 self.send_json_response(error, HTTPStatus.BAD_REQUEST)
             except Exception as e:
                 error = json.dumps({'error': str(e)}, ensure_ascii=False)
                 self.send_json_response(error, HTTPStatus.INTERNAL_SERVER_ERROR)
+
         elif self.path == '/exchangeRates':
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
@@ -65,16 +71,47 @@ class OurHandler(BaseHTTPRequestHandler):
                     key, value = pair.split('=')
                     data[key] = value
                 
+                # Проверяем наличие всех необходимых полей
+                required_fields = ['baseCurrencyCode', 'targetCurrencyCode', 'rate']
+                for field in required_fields:
+                    if field not in data:
+                        error = json.dumps({'error': f'Отсутствует поле {field}'}, ensure_ascii=False)
+                        self.send_json_response(error, HTTPStatus.BAD_REQUEST)
+                        return
+                    if not data[field].strip():
+                        error = json.dumps({'error': f'Поле {field} не может быть пустым'}, ensure_ascii=False)
+                        self.send_json_response(error, HTTPStatus.BAD_REQUEST)
+                        return
+                
+                # Проверяем, что rate является числом
+                try:
+                    rate = float(data['rate'])
+                    if rate <= 0:
+                        error = json.dumps({'error': 'Курс обмена должен быть положительным числом'}, ensure_ascii=False)
+                        self.send_json_response(error, HTTPStatus.BAD_REQUEST)
+                        return
+                except ValueError:
+                    error = json.dumps({'error': 'Курс обмена должен быть числом'}, ensure_ascii=False)
+                    self.send_json_response(error, HTTPStatus.BAD_REQUEST)
+                    return
+                
                 self.currency.add_exchange_rate(
                     data['baseCurrencyCode'],
                     data['targetCurrencyCode'],
-                    float(data['rate'])
+                    rate
                 )
                 response_message = json.dumps({'message': 'Курс обмена успешно добавлен'}, ensure_ascii=False)
-                self.send_json_response(response_message)
+                self.send_json_response(response_message, HTTPStatus.CREATED)
             except ValueError as e:
-                error = json.dumps({'error': str(e)}, ensure_ascii=False)
-                self.send_json_response(error, HTTPStatus.BAD_REQUEST)
+                if "уже существует" in str(e):
+                    error = json.dumps({'error': str(e)}, ensure_ascii=False)
+                    self.send_json_response(error, HTTPStatus.CONFLICT)
+                elif "не найдена" in str(e):
+                    error = json.dumps({'error': str(e)}, ensure_ascii=False)
+                    self.send_json_response(error, HTTPStatus.NOT_FOUND)
+                else:
+                    error = json.dumps({'error': str(e)}, ensure_ascii=False)
+                    self.send_json_response(error, HTTPStatus.BAD_REQUEST)
             except Exception as e:
                 error = json.dumps({'error': str(e)}, ensure_ascii=False)
                 self.send_json_response(error, HTTPStatus.INTERNAL_SERVER_ERROR)
