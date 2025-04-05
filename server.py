@@ -1,0 +1,67 @@
+from http.server import BaseHTTPRequestHandler
+from http import HTTPStatus
+import json
+
+
+class OurHandler(BaseHTTPRequestHandler):
+    def __init__(self, request, client_address, server, currency):
+        self.currency = currency
+        super().__init__(request, client_address, server)
+
+    def send_json_response(self, data, status=HTTPStatus.OK):
+        self.send_response(status)
+        self.send_header('Content-type', 'application/json; charset=UTF-8')
+        self.end_headers()
+        self.wfile.write(data.encode('utf-8'))
+
+    def simple_page(self):
+        self.send_response(HTTPStatus.OK)
+        self.send_header('Content-type', 'text/html; charset=UTF-8')
+        self.end_headers()
+
+        self.wfile.write('Hello World'.encode('utf-8'))
+
+    def file_page(self, filename: str = 'index.html'):
+        self.send_response(HTTPStatus.OK)
+        self.send_header('Content-type', 'text/html; charset=UTF-8')
+        self.end_headers()
+
+        with open(filename, 'rb') as f:
+            self.wfile.write(f.read())
+    
+    def get_currencies(self):
+        currencies = self.currency.get_currencies()
+        self.send_json_response(currencies)
+
+    def do_POST(self):
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+        data = json.loads(post_data.decode('utf-8'))
+        
+        try:
+            self.currency.add_currency(data['name'], data['code'], data['sign'])
+            response_message = json.dumps({'message': 'Валюта успешно добавлена'}, ensure_ascii=False)
+            self.send_json_response(response_message)
+        except ValueError as e:
+            error = json.dumps({'error': str(e)}, ensure_ascii=False)
+            self.send_json_response(error, HTTPStatus.BAD_REQUEST)
+        except Exception as e:
+            error = json.dumps({'error': str(e)}, ensure_ascii=False)
+            self.send_json_response(error, HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def do_GET(self):
+        if self.path == '/':
+            print('index')
+            self.file_page('index.html')
+        elif self.path == '/currencies':
+            self.get_currencies()
+        elif self.path.startswith('/currency/'):
+            code = self.path.split('/')[-1]
+            currency = self.currency.get_currency_by_code(code)
+            if currency:
+                self.send_json_response(currency)
+            else:
+                error = json.dumps({'error': f'Валюта с кодом {code} не найдена'}, ensure_ascii=False)
+                self.send_json_response(error, HTTPStatus.NOT_FOUND)
+        else:
+            self.send_error(HTTPStatus.NOT_FOUND, 'Page not found')
