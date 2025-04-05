@@ -59,7 +59,6 @@ class OurHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 error = json.dumps({'error': str(e)}, ensure_ascii=False)
                 self.send_json_response(error, HTTPStatus.INTERNAL_SERVER_ERROR)
-
         elif self.path == '/exchangeRates':
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
@@ -115,6 +114,64 @@ class OurHandler(BaseHTTPRequestHandler):
             except Exception as e:
                 error = json.dumps({'error': str(e)}, ensure_ascii=False)
                 self.send_json_response(error, HTTPStatus.INTERNAL_SERVER_ERROR)
+        elif self.path == '/exchangeRate':
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            
+            try:
+                # Парсим данные формы
+                data = {}
+                for pair in post_data.decode('utf-8').split('&'):
+                    key, value = pair.split('=')
+                    data[key] = value
+                
+                # Проверяем, является ли это PATCH-запросом
+                if data.get('_method') != 'PATCH':
+                    self.send_error(HTTPStatus.METHOD_NOT_ALLOWED, 'Method not allowed')
+                    return
+                
+                # Проверяем наличие всех необходимых полей
+                required_fields = ['baseCurrencyCodeUpdate', 'targetCurrencyCodeUpdate', 'rate']
+                for field in required_fields:
+                    if field not in data:
+                        error = json.dumps({'error': f'Отсутствует поле {field}'}, ensure_ascii=False)
+                        self.send_json_response(error, HTTPStatus.BAD_REQUEST)
+                        return
+                    if not data[field].strip():
+                        error = json.dumps({'error': f'Поле {field} не может быть пустым'}, ensure_ascii=False)
+                        self.send_json_response(error, HTTPStatus.BAD_REQUEST)
+                        return
+                
+                # Проверяем, что rate является числом
+                try:
+                    rate = float(data['rate'])
+                    if rate <= 0:
+                        error = json.dumps({'error': 'Курс обмена должен быть положительным числом'}, ensure_ascii=False)
+                        self.send_json_response(error, HTTPStatus.BAD_REQUEST)
+                        return
+                except ValueError:
+                    error = json.dumps({'error': 'Курс обмена должен быть числом'}, ensure_ascii=False)
+                    self.send_json_response(error, HTTPStatus.BAD_REQUEST)
+                    return
+                
+                # Обновляем курс
+                result = self.currency.update_exchange_rate(
+                    data['baseCurrencyCodeUpdate'],
+                    data['targetCurrencyCodeUpdate'],
+                    rate
+                )
+                self.send_json_response(result)
+                
+            except ValueError as e:
+                if "не найдена" in str(e):
+                    error = json.dumps({'error': str(e)}, ensure_ascii=False)
+                    self.send_json_response(error, HTTPStatus.NOT_FOUND)
+                else:
+                    error = json.dumps({'error': str(e)}, ensure_ascii=False)
+                    self.send_json_response(error, HTTPStatus.BAD_REQUEST)
+            except Exception as e:
+                error = json.dumps({'error': str(e)}, ensure_ascii=False)
+                self.send_json_response(error, HTTPStatus.INTERNAL_SERVER_ERROR)
         else:
             self.send_error(HTTPStatus.NOT_FOUND, 'Page not found')
 
@@ -124,6 +181,9 @@ class OurHandler(BaseHTTPRequestHandler):
             self.file_page('index.html')
         elif self.path == '/currencies':
             self.get_currencies()
+        elif self.path == '/exchange-rate-pairs':
+            pairs = self.currency.get_exchange_rate_pairs()
+            self.send_json_response(pairs)
         elif self.path.startswith('/currency/'):
             code = self.path.split('/')[-1]
             currency = self.currency.get_currency_by_code(code)

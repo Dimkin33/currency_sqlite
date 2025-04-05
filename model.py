@@ -138,4 +138,77 @@ class Currency:
         
         return json.dumps(result, ensure_ascii=False, indent=4)
 
+    def update_exchange_rate(self, base_currency_code, target_currency_code, rate):
+        connection = sqlite3.connect('my_database.db')
+        cursor = connection.cursor()
+        
+        # Проверяем существование валютной пары
+        cursor.execute('''
+            SELECT er.id, 
+                   bc.id as base_id, bc.name as base_name, bc.code as base_code, bc.sign as base_sign,
+                   tc.id as target_id, tc.name as target_name, tc.code as target_code, tc.sign as target_sign,
+                   er.rate
+            FROM ExchangeRates er
+            JOIN Currencies bc ON er.baseCurrencyCode = bc.code
+            JOIN Currencies tc ON er.targetCurrencyCode = tc.code
+            WHERE er.baseCurrencyCode = ? AND er.targetCurrencyCode = ?
+        ''', (base_currency_code.upper(), target_currency_code.upper()))
+        
+        result = cursor.fetchone()
+        if not result:
+            connection.close()
+            raise ValueError(f'Валютная пара {base_currency_code}/{target_currency_code} не найдена')
+        
+        # Обновляем курс
+        cursor.execute('''
+            UPDATE ExchangeRates 
+            SET rate = ?
+            WHERE baseCurrencyCode = ? AND targetCurrencyCode = ?
+        ''', (rate, base_currency_code.upper(), target_currency_code.upper()))
+        
+        connection.commit()
+        connection.close()
+        
+        # Формируем ответ
+        return json.dumps({
+            'id': result[0],
+            'baseCurrency': {
+                'id': result[1],
+                'name': result[2],
+                'code': result[3],
+                'sign': result[4]
+            },
+            'targetCurrency': {
+                'id': result[5],
+                'name': result[6],
+                'code': result[7],
+                'sign': result[8]
+            },
+            'rate': rate
+        }, ensure_ascii=False, indent=4)
+
+    def get_exchange_rate_pairs(self):
+        connection = sqlite3.connect('my_database.db')
+        cursor = connection.cursor()
+        cursor.execute('''
+            SELECT er.baseCurrencyCode, er.targetCurrencyCode, 
+                   bc.name as base_name, tc.name as target_name
+            FROM ExchangeRates er
+            JOIN Currencies bc ON er.baseCurrencyCode = bc.code
+            JOIN Currencies tc ON er.targetCurrencyCode = tc.code
+        ''')
+        pairs = cursor.fetchall()
+        connection.close()
+        
+        result = []
+        for base_code, target_code, base_name, target_name in pairs:
+            result.append({
+                'baseCurrencyCode': base_code,
+                'targetCurrencyCode': target_code,
+                'baseName': base_name,
+                'targetName': target_name
+            })
+        
+        return json.dumps(result, ensure_ascii=False, indent=4)
+
         
